@@ -1,0 +1,30 @@
+{
+  "name": "raft-node",
+  "version": "1.0.0",
+  "main": "src/server.js",
+  "scripts": {
+    "start:node1": "dotenv -e .env.node1 -- node src/server.js",
+    "start:node2": "dotenv -e .env.node2 -- node src/server.js",
+    "start:node3": "dotenv -e .env.node3 -- node src/server.js",
+    "start:node4": "dotenv -e .env.node4 -- node src/server.js",
+    "start:node5": "dotenv -e .env.node5 -- node src/server.js",
+    "dev:node1": "dotenv -e .env.node1 -- nodemon src/server.js",
+    "dev:node2": "dotenv -e .env.node2 -- nodemon src/server.js",
+    "dev:node3": "dotenv -e .env.node3 -- nodemon src/server.js",
+    "dev:node4": "dotenv -e .env.node4 -- nodemon src/server.js",
+    "dev:node5": "dotenv -e .env.node5 -- nodemon src/server.js",
+    "loadtest": "node scripts/loadTest.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.2",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "bcryptjs": "^2.4.3",
+    "socket.io": "^4.7.5"
+  },
+  "devDependencies": {
+    "dotenv-cli": "^7.4.2",
+    "nodemon": "^3.1.4"
+  }
+}

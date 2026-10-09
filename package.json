@@ -1,0 +1,12 @@
+{
+  "name": "distributed-voting-system",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "demo": "concurrently -n node1,node2,node3,node4,node5,dashboard -c blue,green,yellow,magenta,cyan,white \"npm run start:node1 --prefix nodes/raft-node\" \"npm run start:node2 --prefix nodes/raft-node\" \"npm run start:node3 --prefix nodes/raft-node\" \"npm run start:node4 --prefix nodes/raft-node\" \"npm run start:node5 --prefix nodes/raft-node\" \"npm run dev --prefix dashboard\"",
+    "loadtest": "node nodes/raft-node/scripts/loadTest.js"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
