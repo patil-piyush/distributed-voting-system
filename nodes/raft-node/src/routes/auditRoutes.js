@@ -18,6 +18,7 @@ router.get('/local', (req, res) => {
   const committed = [];
   for (let i = 0; i <= state.commitIndex && i < state.log.length; i++) {
     const e = state.log[i];
+    if (e.command.type === 'noop') continue;
     committed.push([e.index, e.term, e.command.voterId, e.command.candidateChoice]);
   }
   res.json({
@@ -41,6 +42,7 @@ router.get('/', async (req, res) => {
   const localCommitted = [];
   for (let i = 0; i <= state.commitIndex && i < state.log.length; i++) {
     const e = state.log[i];
+    if (e.command.type === 'noop') continue;
     localCommitted.push([e.index, e.term, e.command.voterId, e.command.candidateChoice]);
   }
 

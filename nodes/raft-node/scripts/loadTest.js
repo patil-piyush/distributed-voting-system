@@ -51,24 +51,42 @@ async function castVote(voterId) {
     { headers: { Authorization: `Bearer ${token}` } }
   );
 
-  return { voterId, loginNode, voteNode, candidateChoice, result: voteRes.data };
+  return { voterId, loginNode, voteNode, candidateChoice, result: voteRes.data, status: voteRes.status };
 }
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function main() {
   console.log(`Simulating ${VOTER_COUNT} concurrent voters across ${NODES.length} nodes...\n`);
 
-  const voterIds = Array.from({ length: VOTER_COUNT }, (_, i) => `voter${i + 1}`);
+  console.log('Fetching initial tally before testing...');
+  let initialTallyTotal = 0;
+  try {
+    const r = await axios.get(`${NODES[0]}/tally`);
+    initialTallyTotal = Object.values(r.data).reduce((sum, val) => sum + val, 0);
+  } catch (err) {
+    console.log('Failed to fetch initial tally, assuming 0.');
+  }
 
-  // Promise.allSettled fires every request in parallel — this is the
-  // actual concurrency test, not a sequential loop.
+  const voterIds = Array.from({ length: VOTER_COUNT }, (_, i) => `voter${i + 1}`);
   const results = await Promise.allSettled(voterIds.map((id) => castVote(id)));
 
   let succeeded = 0;
+  let pending = 0;
   let failed = 0;
+  
   for (const r of results) {
     if (r.status === 'fulfilled') {
-      succeeded += 1;
-      console.log(`OK   ${r.value.voterId} -> voted "${r.value.candidateChoice}" via ${r.value.voteNode}`);
+      if (r.value.status === 200) {
+        succeeded += 1;
+        console.log(`OK   ${r.value.voterId} -> voted "${r.value.candidateChoice}" via ${r.value.voteNode}`);
+      } else if (r.value.status === 202) {
+        pending += 1;
+        console.log(`PEND ${r.value.voterId} -> voted "${r.value.candidateChoice}" via ${r.value.voteNode} (pending)`);
+      } else {
+        failed += 1;
+        console.log(`FAIL ${r.value.voterId} -> returned ${r.value.status}`);
+      }
     } else {
       failed += 1;
       const msg = r.reason.response?.data?.error || r.reason.message;
@@ -76,19 +94,53 @@ async function main() {
     }
   }
 
-  console.log(`\n${succeeded} succeeded, ${failed} failed.\n`);
+  console.log(`\n${succeeded} committed (200), ${pending} pending (202), ${failed} failed.\n`);
 
-  console.log('Fetching tally from every node to confirm consistency...\n');
-  const tallies = await Promise.all(
-    NODES.map((url) => axios.get(`${url}/tally`).then((r) => ({ url, tally: r.data })))
-  );
+  console.log('Polling /tally from every node to confirm consistency (up to 5s)...\n');
+  
+  let tallies = [];
+  let allMatch = false;
+  
+  for (let i = 0; i < 17; i++) { // 17 * 300ms ≈ 5s
+    tallies = await Promise.all(
+      NODES.map(async (url) => {
+        try {
+          const r = await axios.get(`${url}/tally`);
+          return { url, tally: r.data };
+        } catch (err) {
+          return { url, tally: null };
+        }
+      })
+    );
+    
+    const serialized = tallies.map((t) => JSON.stringify(t.tally));
+    allMatch = serialized.every((s) => s === serialized[0]) && tallies.every(t => t.tally !== null);
+    
+    if (allMatch) {
+      break;
+    }
+    
+    await sleep(300);
+  }
+
   for (const t of tallies) {
     console.log(`${t.url} ->`, t.tally);
   }
 
-  const serialized = tallies.map((t) => JSON.stringify(t.tally));
-  const allMatch = serialized.every((s) => s === serialized[0]);
   console.log(`\nAll 5 nodes agree on the tally: ${allMatch ? 'YES — consensus held under concurrent load.' : 'NO — investigate!'}`);
+
+  const finalTally = tallies[0].tally || {};
+  const totalVotes = Object.values(finalTally).reduce((sum, val) => sum + val, 0);
+  const diffVotes = totalVotes - initialTallyTotal;
+  
+  console.log(`Total votes counted in this run (diff): ${diffVotes} (Final: ${totalVotes}, Initial: ${initialTallyTotal})`);
+  console.log(`HTTP 200 responses: ${succeeded}`);
+  
+  if (diffVotes === succeeded) {
+    console.log('SUCCESS: sum of votes exactly matches number of 200 responses.');
+  } else {
+    console.log('WARNING: sum of votes does not match number of 200 responses.');
+  }
 }
 
 main().catch((err) => {

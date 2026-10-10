@@ -114,7 +114,7 @@ function recordVote(candidateId) {
 // leader crashes before replication finishes), this voter is stuck
 // unable to resubmit. Acceptable, documented simplification for FA-1.
 function hasVoterVoted(voterId) {
-  return state.log.some((entry) => entry.command.voterId === voterId);
+  return state.log.some((entry) => entry.command.type !== 'noop' && entry.command.voterId === voterId);
 }
 
 function appendLogEntry(command) {
@@ -183,6 +183,7 @@ function getTallySnapshot() {
   const committedEntries = state.log.slice(0, state.commitIndex + 1);
   const tally = {};
   for (const entry of committedEntries) {
+    if (entry.command.type === 'noop') continue;
     const choice = entry.command.candidateChoice;
     tally[choice] = (tally[choice] || 0) + 1;
   }

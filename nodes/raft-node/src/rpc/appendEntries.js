@@ -102,6 +102,7 @@ async function sendAppendEntriesToAll() {
 
   if (newlyCommitted.length > 0) {
     for (const { entry, acks } of newlyCommitted) {
+      if (entry.command.type === 'noop') continue;
       const commitClock = clocks.localEvent();
       console.log(`[${NODE_ID}] committed entry ${entry.index} (${acks}/${clusterSize} acks)`);
       emitUpdate('vote-activity', {

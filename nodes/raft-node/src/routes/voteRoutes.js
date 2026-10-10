@@ -62,7 +62,7 @@ router.post('/vote', requireAuth, async (req, res) => {
       return res.status(202).json({ 
         status: 'pending', 
         handledBy: NODE_ID, 
-        note: 'entry appended; majority not reachable yet - it will commit automatically once a majority acknowledges' 
+        note: 'entry appended but not yet confirmed by a majority; check the tally and retry if it does not appear' 
       });
     }
   }
@@ -103,16 +103,7 @@ router.get('/status', (req, res) => {
 });
 
 router.get('/tally', (req, res) => {
-  const state = raftState.getState();
-  // Only count entries that are actually committed — an entry sitting
-  // in the log but not yet committed hasn't been agreed on by a
-  // majority yet, so it shouldn't count towards the result.
-  const committedEntries = state.log.slice(0, state.commitIndex + 1);
-  const tally = {};
-  for (const entry of committedEntries) {
-    const choice = entry.command.candidateChoice;
-    tally[choice] = (tally[choice] || 0) + 1;
-  }
+  const tally = raftState.getTallySnapshot();
   res.json(tally);
 });
 

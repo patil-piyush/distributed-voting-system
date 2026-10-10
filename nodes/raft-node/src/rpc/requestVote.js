@@ -78,6 +78,7 @@ async function startElection() {
   ) {
     raftState.becomeLeader(NODE_ID);
     raftState.initLeaderState(PEERS.map(p => p.id));
+    raftState.appendLogEntry({ type: 'noop' });
     console.log(`[${NODE_ID}] won election for term ${raftState.getState().currentTerm} — becoming leader`);
     emitUpdate('status', raftState.getStatusSnapshot(NODE_ID));
     timers.stopElectionTimer();

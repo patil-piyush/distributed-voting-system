@@ -29,23 +29,25 @@ router.post('/publish-results', requireAdmin, async (req, res) => {
     // 1. Request critical section
     await requestCS();
 
-    // 2. Critical Section begins
-    const lamport = clocks.snapshot().lamport;
-    const beginLine = `BEGIN node=${NODE_ID} lamport=${lamport} t=${new Date().toISOString()}\n`;
-    fs.appendFileSync(RESULTS_FILE, beginLine);
+    try {
+      // 2. Critical Section begins
+      const lamport = clocks.snapshot().lamport;
+      const beginLine = `BEGIN node=${NODE_ID} lamport=${lamport} t=${new Date().toISOString()}\n`;
+      fs.appendFileSync(RESULTS_FILE, beginLine);
 
-    // 3. Sleep to simulate work and hold the CS
-    await sleep(CS_HOLD_MS);
+      // 3. Sleep to simulate work and hold the CS
+      await sleep(CS_HOLD_MS);
 
-    // 4. Append tally and end marker
-    const tally = raftState.getTallySnapshot();
-    const endLine = `${JSON.stringify(tally)}\nEND node=${NODE_ID}\n`;
-    fs.appendFileSync(RESULTS_FILE, endLine);
+      // 4. Append tally and end marker
+      const tally = raftState.getTallySnapshot();
+      const endLine = `${JSON.stringify(tally)}\nEND node=${NODE_ID}\n`;
+      fs.appendFileSync(RESULTS_FILE, endLine);
 
-    // 5. Release critical section
-    releaseCS();
-
-    res.json({ ok: true, node: NODE_ID, message: 'results published' });
+      res.json({ ok: true, node: NODE_ID, message: 'results published' });
+    } finally {
+      // 5. Release critical section
+      releaseCS();
+    }
   } catch (error) {
     console.error('Error publishing results:', error);
     res.status(500).json({ error: 'internal error' });
