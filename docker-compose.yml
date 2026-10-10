@@ -1,0 +1,120 @@
+services:
+  node1:
+    build:
+      context: ./nodes/raft-node
+    environment:
+      - NODE_ID=node1
+      - PORT=5001
+      - PEERS=node2@http://node2:5002,node3@http://node3:5003,node4@http://node4:5004,node5@http://node5:5005
+      - JWT_SECRET=${JWT_SECRET:-default_secret}
+      - DATA_DIR=/data
+      - ELECTION_TIMEOUT_MIN_MS=400
+      - ELECTION_TIMEOUT_MAX_MS=800
+      - HEARTBEAT_INTERVAL_MS=100
+      - RPC_TIMEOUT_MS=150
+      - SHARED_DIR=/shared
+    ports:
+      - "5001:5001"
+    volumes:
+      - node1-data:/data
+      - shared:/shared
+    restart: "no"
+
+  node2:
+    build:
+      context: ./nodes/raft-node
+    environment:
+      - NODE_ID=node2
+      - PORT=5002
+      - PEERS=node1@http://node1:5001,node3@http://node3:5003,node4@http://node4:5004,node5@http://node5:5005
+      - JWT_SECRET=${JWT_SECRET:-default_secret}
+      - DATA_DIR=/data
+      - ELECTION_TIMEOUT_MIN_MS=400
+      - ELECTION_TIMEOUT_MAX_MS=800
+      - HEARTBEAT_INTERVAL_MS=100
+      - RPC_TIMEOUT_MS=150
+      - SHARED_DIR=/shared
+    ports:
+      - "5002:5002"
+    volumes:
+      - node2-data:/data
+      - shared:/shared
+    restart: "no"
+
+  node3:
+    build:
+      context: ./nodes/raft-node
+    environment:
+      - NODE_ID=node3
+      - PORT=5003
+      - PEERS=node1@http://node1:5001,node2@http://node2:5002,node4@http://node4:5004,node5@http://node5:5005
+      - JWT_SECRET=${JWT_SECRET:-default_secret}
+      - DATA_DIR=/data
+      - ELECTION_TIMEOUT_MIN_MS=400
+      - ELECTION_TIMEOUT_MAX_MS=800
+      - HEARTBEAT_INTERVAL_MS=100
+      - RPC_TIMEOUT_MS=150
+      - SHARED_DIR=/shared
+    ports:
+      - "5003:5003"
+    volumes:
+      - node3-data:/data
+      - shared:/shared
+    restart: "no"
+
+  node4:
+    build:
+      context: ./nodes/raft-node
+    environment:
+      - NODE_ID=node4
+      - PORT=5004
+      - PEERS=node1@http://node1:5001,node2@http://node2:5002,node3@http://node3:5003,node5@http://node5:5005
+      - JWT_SECRET=${JWT_SECRET:-default_secret}
+      - DATA_DIR=/data
+      - ELECTION_TIMEOUT_MIN_MS=400
+      - ELECTION_TIMEOUT_MAX_MS=800
+      - HEARTBEAT_INTERVAL_MS=100
+      - RPC_TIMEOUT_MS=150
+      - SHARED_DIR=/shared
+    ports:
+      - "5004:5004"
+    volumes:
+      - node4-data:/data
+      - shared:/shared
+    restart: "no"
+
+  node5:
+    build:
+      context: ./nodes/raft-node
+    environment:
+      - NODE_ID=node5
+      - PORT=5005
+      - PEERS=node1@http://node1:5001,node2@http://node2:5002,node3@http://node3:5003,node4@http://node4:5004
+      - JWT_SECRET=${JWT_SECRET:-default_secret}
+      - DATA_DIR=/data
+      - ELECTION_TIMEOUT_MIN_MS=400
+      - ELECTION_TIMEOUT_MAX_MS=800
+      - HEARTBEAT_INTERVAL_MS=100
+      - RPC_TIMEOUT_MS=150
+      - SHARED_DIR=/shared
+    ports:
+      - "5005:5005"
+    volumes:
+      - node5-data:/data
+      - shared:/shared
+    restart: "no"
+
+  dashboard:
+    build:
+      context: ./dashboard
+    ports:
+      - "5173:80"
+    restart: "no"
+
+volumes:
+  node1-data:
+  node2-data:
+  node3-data:
+  node4-data:
+  node5-data:
+  shared:

@@ -12,6 +12,8 @@ const ROLES = {
   LEADER: 'leader',
 };
 
+const persistence = require('./persistence');
+
 const state = {
   currentTerm: 0,
   votedFor: null,        // node id we voted for in the current term
@@ -20,7 +22,20 @@ const state = {
   commitIndex: -1,        // highest log index known to be committed
   votesReceived: new Set(), // only meaningful while role === CANDIDATE
   currentLeaderId: null,   // best-known leader, used to forward client votes
+  nextIndex: {},          // leader volatile state
+  matchIndex: {},         // leader volatile state
 };
+
+const loaded = persistence.load();
+if (loaded) {
+  state.currentTerm = loaded.currentTerm;
+  state.votedFor = loaded.votedFor;
+  state.log = loaded.log || [];
+  state.commitIndex = loaded.commitIndex;
+  if (state.commitIndex > state.log.length - 1) {
+    state.commitIndex = Math.max(-1, state.log.length - 1);
+  }
+}
 
 function getState() {
   return state;
@@ -30,6 +45,7 @@ function getState() {
 // anyone (a RequestVote or AppendEntries carrying term > currentTerm),
 // or when a candidate discovers a legitimate current leader.
 function becomeFollower(term, leaderId = null) {
+  const termChanged = term > state.currentTerm;
   if (term > state.currentTerm) {
     state.currentTerm = term;
     state.votedFor = null; // a new term means we haven't voted in it yet
@@ -37,6 +53,11 @@ function becomeFollower(term, leaderId = null) {
   state.role = ROLES.FOLLOWER;
   state.votesReceived = new Set();
   if (leaderId) state.currentLeaderId = leaderId;
+  state.nextIndex = {};
+  state.matchIndex = {};
+  if (termChanged) {
+    persistence.save(state);
+  }
 }
 
 // Move to candidate: bump our own term, vote for ourselves, forget
@@ -47,6 +68,9 @@ function becomeCandidate(selfId) {
   state.votedFor = selfId;
   state.votesReceived = new Set([selfId]);
   state.currentLeaderId = null;
+  state.nextIndex = {};
+  state.matchIndex = {};
+  persistence.save(state);
 }
 
 // Move to leader. Only ever called right after winning a majority.
@@ -65,14 +89,23 @@ function hasMajority(clusterSize) {
 }
 
 // Decide whether to grant a vote to a candidate that's asking for one.
-function canGrantVote(candidateTerm, candidateId) {
+function canGrantVote(candidateTerm, candidateId, candidateLastLogIndex, candidateLastLogTerm) {
   if (candidateTerm < state.currentTerm) return false;
-  if (state.votedFor === null || state.votedFor === candidateId) return true;
+  if (state.votedFor === null || state.votedFor === candidateId) {
+    const lastLogIndex = state.log.length - 1;
+    const lastLogTerm = lastLogIndex >= 0 ? state.log[lastLogIndex].term : 0;
+    
+    // Require candidate's log to be at least as up-to-date as ours
+    if (candidateLastLogTerm > lastLogTerm || (candidateLastLogTerm === lastLogTerm && candidateLastLogIndex >= lastLogIndex)) {
+      return true;
+    }
+  }
   return false;
 }
 
 function recordVote(candidateId) {
   state.votedFor = candidateId;
+  persistence.save(state);
 }
 
 // Scans the FULL log (not just committed entries) so a voter can't
@@ -91,13 +124,43 @@ function appendLogEntry(command) {
     command,
   };
   state.log.push(entry);
+  persistence.save(state);
   return entry;
 }
 
 function updateCommitIndex(index) {
   if (index > state.commitIndex) {
     state.commitIndex = index;
+    persistence.save(state);
   }
+}
+
+function initLeaderState(peerIds) {
+  state.nextIndex = {};
+  state.matchIndex = {};
+  const nextIdx = state.log.length;
+  for (const id of peerIds) {
+    state.nextIndex[id] = nextIdx;
+    state.matchIndex[id] = -1;
+  }
+}
+
+function getNextIndex() {
+  return state.nextIndex;
+}
+
+function getMatchIndex() {
+  return state.matchIndex;
+}
+
+function appendReplicatedEntry(entry) {
+  state.log.push(entry);
+  persistence.save(state);
+}
+
+function truncateLogFrom(index) {
+  state.log = state.log.slice(0, index);
+  persistence.save(state);
 }
 
 // Shared shape used by both the /status REST route and the Socket.io
@@ -141,4 +204,9 @@ module.exports = {
   hasVoterVoted,
   getStatusSnapshot,
   getTallySnapshot,
+  initLeaderState,
+  getNextIndex,
+  getMatchIndex,
+  appendReplicatedEntry,
+  truncateLogFrom,
 };

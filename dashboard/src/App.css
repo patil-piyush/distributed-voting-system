@@ -256,3 +256,323 @@ footer {
   border-color: #ef4444;
   color: #ef4444;
 }
+
+/* ── Cluster Consistency Audit ───────────────────────────── */
+
+.audit-panel {
+  margin-bottom: 20px;
+}
+
+.audit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.audit-header h2 {
+  margin: 0;
+}
+
+.audit-btn {
+  background: var(--teal);
+  color: #06231f;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.audit-btn:hover { opacity: 0.9; }
+.audit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.audit-banner {
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.audit-banner-ok {
+  background: rgba(45, 212, 191, 0.12);
+  color: var(--teal);
+  border: 1px solid rgba(45, 212, 191, 0.3);
+}
+
+.audit-banner-warn {
+  background: rgba(251, 191, 36, 0.12);
+  color: var(--amber);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.audit-error {
+  color: #ef4444;
+  font-size: 13px;
+  margin: 8px 0;
+}
+
+.audit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.audit-table th {
+  text-align: left;
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border);
+}
+
+.audit-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.audit-table tr.audit-in-sync td {
+  color: var(--text);
+}
+
+.audit-table tr.audit-diverged td {
+  color: var(--amber);
+}
+
+.audit-table tr.audit-unreachable td {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+.audit-status-cell {
+  font-weight: 600;
+}
+
+.audit-table tr.audit-in-sync .audit-status-cell {
+  color: var(--teal);
+}
+
+.audit-table tr.audit-diverged .audit-status-cell {
+  color: var(--amber);
+}
+
+.audit-table tr.audit-unreachable .audit-status-cell {
+  color: #ef4444;
+}
+
+.audit-diverge-idx {
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.audit-timestamp {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* ── Causality Panel ─────────────────────────────────────── */
+
+.causality-panel {
+  background: #10182a;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.causality-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.causality-header h3 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.clear-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.clear-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.causality-result {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.relation {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.relation-before, .relation-after { color: var(--teal); }
+.relation-equal { color: var(--gray); }
+.relation-concurrent { color: var(--amber); }
+
+.log-order {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.causality-hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 10px;
+  font-style: italic;
+}
+
+/* ── Selectable Feed Items & Clocks ──────────────────────── */
+
+.feed-item {
+  cursor: pointer;
+}
+
+.feed-item:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.feed-item.selected {
+  background: rgba(45, 212, 191, 0.1);
+  border-left: 3px solid var(--teal);
+}
+
+.feed-clocks {
+  font-size: 10.5px;
+  color: #566582;
+  margin-top: 4px;
+}
+
+.feed-clocks span {
+  display: inline-block;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* ── Mutex Panel ─────────────────────────────────────────── */
+
+.mutex-container {
+  margin-bottom: 20px;
+}
+
+.mutex-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.mutex-header h2 {
+  margin: 0;
+}
+
+.mutex-btn {
+  background: var(--purple);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.mutex-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.mutex-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mutex-message {
+  font-size: 13px;
+  color: var(--teal);
+  margin-bottom: 12px;
+}
+
+.mutex-status {
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 14px;
+  text-align: center;
+}
+
+.mutex-safe {
+  background: rgba(45, 212, 191, 0.1);
+  color: var(--teal);
+  border: 1px solid rgba(45, 212, 191, 0.3);
+}
+
+.mutex-danger {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  animation: pulse-danger 1s infinite;
+}
+
+@keyframes pulse-danger {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+.mutex-timeline {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 250px;
+  overflow-y: auto;
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+  font-size: 12px;
+}
+
+.mutex-timeline::-webkit-scrollbar { width: 6px; }
+.mutex-timeline::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.mutex-item {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.mutex-time { color: var(--muted); }
+.mutex-node { color: var(--teal); font-weight: 600; width: 45px; }
+.mutex-action { font-weight: 700; width: 60px; }
+.mutex-lamport { color: var(--purple); }
+
+.mutex-enter { background: rgba(45, 212, 191, 0.15); border-left: 3px solid var(--teal); }
+.mutex-exit { background: rgba(167, 139, 250, 0.1); }
+.mutex-defer { color: var(--amber); }
+.mutex-request { opacity: 0.8; }
+.mutex-reply { opacity: 0.6; }

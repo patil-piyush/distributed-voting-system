@@ -7,14 +7,16 @@
 let electionTimer = null;
 let heartbeatTimer = null;
 
-const MIN_ELECTION_TIMEOUT_MS = 150;
-const MAX_ELECTION_TIMEOUT_MS = 300;
-const HEARTBEAT_INTERVAL_MS = 50;
+const {
+  ELECTION_TIMEOUT_MIN_MS,
+  ELECTION_TIMEOUT_MAX_MS,
+  HEARTBEAT_INTERVAL_MS,
+} = require('../config/peers');
 
 function randomElectionTimeout() {
   return (
-    MIN_ELECTION_TIMEOUT_MS +
-    Math.random() * (MAX_ELECTION_TIMEOUT_MS - MIN_ELECTION_TIMEOUT_MS)
+    ELECTION_TIMEOUT_MIN_MS +
+    Math.random() * (ELECTION_TIMEOUT_MAX_MS - ELECTION_TIMEOUT_MIN_MS)
   );
 }
 

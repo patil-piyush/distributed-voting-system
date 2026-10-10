@@ -9,6 +9,18 @@ require('dotenv').config();
 
 const NODE_ID = process.env.NODE_ID;
 const PORT = process.env.PORT;
+const DATA_DIR = process.env.DATA_DIR || './data';
+const PERSIST = process.env.PERSIST !== 'false';
+const FORWARD_TIMEOUT_MS = parseInt(process.env.FORWARD_TIMEOUT_MS, 10) || 3000;
+const ELECTION_TIMEOUT_MIN_MS = parseInt(process.env.ELECTION_TIMEOUT_MIN_MS, 10) || 150;
+const ELECTION_TIMEOUT_MAX_MS = parseInt(process.env.ELECTION_TIMEOUT_MAX_MS, 10) || 300;
+const HEARTBEAT_INTERVAL_MS = parseInt(process.env.HEARTBEAT_INTERVAL_MS, 10) || 50;
+const RPC_TIMEOUT_MS = parseInt(process.env.RPC_TIMEOUT_MS, 10) || 50;
+
+const SHARED_DIR = process.env.SHARED_DIR || './shared';
+const ADMIN_KEY = process.env.ADMIN_KEY || 'admin-demo-key';
+const CS_HOLD_MS = parseInt(process.env.CS_HOLD_MS, 10) || 1500;
+const RA_TIMEOUT_MS = parseInt(process.env.RA_TIMEOUT_MS, 10) || 2000;
 
 // PEERS is a comma-separated list of "id@url" pairs, e.g.:
 // node2@http://localhost:5002,node3@http://localhost:5003
@@ -29,4 +41,19 @@ if (!NODE_ID || !PORT) {
   );
 }
 
-module.exports = { NODE_ID, PORT, PEERS };
+module.exports = { 
+  NODE_ID, 
+  PORT, 
+  PEERS, 
+  DATA_DIR, 
+  PERSIST, 
+  FORWARD_TIMEOUT_MS,
+  ELECTION_TIMEOUT_MIN_MS,
+  ELECTION_TIMEOUT_MAX_MS,
+  HEARTBEAT_INTERVAL_MS,
+  RPC_TIMEOUT_MS,
+  SHARED_DIR,
+  ADMIN_KEY,
+  CS_HOLD_MS,
+  RA_TIMEOUT_MS
+};

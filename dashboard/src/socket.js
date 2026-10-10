@@ -4,7 +4,7 @@ import { NODES } from './api';
 // Connects to ALL 5 nodes at once — this is what lets the dashboard
 // show live node health independently of who's currently leader, and
 // pick up tally updates from whichever node reports first.
-export function connectAllSockets({ onStatus, onTally, onDisconnect, onVoteActivity }) {
+export function connectAllSockets({ onStatus, onTally, onDisconnect, onVoteActivity, onMutex }) {
   const sockets = NODES.map((node) => {
     const socket = io(node.url, {
       transports: ['websocket'],
@@ -13,6 +13,7 @@ export function connectAllSockets({ onStatus, onTally, onDisconnect, onVoteActiv
     socket.on('status', (data) => onStatus(node.id, data));
     socket.on('tally', (data) => onTally(data));
     socket.on('vote-activity', (data) => onVoteActivity?.(data));
+    socket.on('mutex', (data) => onMutex?.(data));
     socket.on('disconnect', () => onDisconnect(node.id));
     return socket;
   });

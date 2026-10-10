@@ -20,4 +20,16 @@ router.post('/append-entries', (req, res) => {
   res.json(result);
 });
 
+const ricartAgrawala = require('../mutex/ricartAgrawala');
+
+router.post('/ra-request', (req, res) => {
+  ricartAgrawala.handleReceiveRequest(req.body.from, req.body.ts);
+  res.json({ ok: true });
+});
+
+router.post('/ra-reply', (req, res) => {
+  ricartAgrawala.handleReceiveReply(req.body.from);
+  res.json({ ok: true });
+});
+
 module.exports = router;

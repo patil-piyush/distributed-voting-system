@@ -77,6 +77,7 @@ async function startElection() {
     raftState.hasMajority(clusterSize)
   ) {
     raftState.becomeLeader(NODE_ID);
+    raftState.initLeaderState(PEERS.map(p => p.id));
     console.log(`[${NODE_ID}] won election for term ${raftState.getState().currentTerm} — becoming leader`);
     emitUpdate('status', raftState.getStatusSnapshot(NODE_ID));
     timers.stopElectionTimer();
@@ -89,14 +90,14 @@ async function startElection() {
 
 // Called by the /rpc/request-vote route when another node asks us
 // for our vote in its election.
-function handleRequestVote({ term, candidateId }) {
+function handleRequestVote({ term, candidateId, lastLogIndex, lastLogTerm }) {
   const state = raftState.getState();
 
   if (term > state.currentTerm) {
     raftState.becomeFollower(term);
   }
 
-  const granted = raftState.canGrantVote(term, candidateId);
+  const granted = raftState.canGrantVote(term, candidateId, lastLogIndex, lastLogTerm);
 
   if (granted) {
     raftState.recordVote(candidateId);

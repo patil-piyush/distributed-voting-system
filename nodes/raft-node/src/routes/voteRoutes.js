@@ -12,6 +12,11 @@ const peerClient = require('../rpc/peerClient');
 const { requireAuth } = require('../auth/authMiddleware');
 const { CANDIDATES } = require('../data/candidates');
 const { NODE_ID, PEERS } = require('../config/peers');
+const clocks = require('../clock/clocks');
+
+// Set of configured peer ids, used to validate the x-forwarded-by-node
+// header so a voter can't spoof receivedByNode or receivedClock.
+const peerIdSet = new Set(PEERS.map((p) => p.id));
 
 const router = express.Router();
 
@@ -21,7 +26,7 @@ router.post('/vote', requireAuth, async (req, res) => {
   const { candidateChoice } = req.body;
 
   const isValidCandidate = CANDIDATES.some((c) => c.id === candidateChoice);
-  if (!candidateChorequestVoteice || !isValidCandidate) {
+  if (!candidateChoice || !isValidCandidate) {
     return res.status(400).json({ error: 'candidateChoice must be a valid candidate id' });
   }
 
@@ -29,14 +34,43 @@ router.post('/vote', requireAuth, async (req, res) => {
     if (raftState.hasVoterVoted(voterId)) {
       return res.status(409).json({ error: 'this voter has already voted' });
     }
-    const receivedByNode = req.body.receivedByNode || NODE_ID;
-    await appendEntries.leaderAppendAndReplicate({ voterId, candidateChoice, receivedByNode });
-    return res.json({ status: 'committed', handledBy: NODE_ID });
+
+    // Determine receivedByNode and receivedClock. Trust the forwarding
+    // peer's values ONLY if x-forwarded-by-node names a configured peer;
+    // otherwise the request came directly from a voter.
+    const forwardedBy = req.headers['x-forwarded-by-node'];
+    let receivedByNode;
+    let receivedClock;
+
+    if (forwardedBy && peerIdSet.has(forwardedBy) && req.body.receivedClock) {
+      // Trusted internal forward — merge the follower's clock.
+      receivedByNode = req.body.receivedByNode;
+      receivedClock = clocks.onReceive(req.body.receivedClock);
+    } else {
+      // Direct voter request — tick our own clock.
+      receivedByNode = NODE_ID;
+      receivedClock = clocks.localEvent();
+    }
+
+    const appendClock = clocks.localEvent();
+    const replResult = await appendEntries.leaderAppendAndReplicate({
+      voterId, candidateChoice, receivedByNode, receivedClock, appendClock,
+    });
+    if (replResult.committed) {
+      return res.status(200).json({ status: 'committed', handledBy: NODE_ID });
+    } else {
+      return res.status(202).json({ 
+        status: 'pending', 
+        handledBy: NODE_ID, 
+        note: 'entry appended; majority not reachable yet - it will commit automatically once a majority acknowledges' 
+      });
+    }
   }
 
-  // Not the leader — forward to whoever we currently believe is,
-  // carrying the original Authorization header so the leader can
-  // verify the voter's identity itself.
+  // Not the leader — tick clock on receipt, then forward with the
+  // clock snapshot and our identity so the leader can merge it.
+  const receivedClock = clocks.localEvent();
+
   const leaderId = state.currentLeaderId;
   const leaderPeer = PEERS.find((p) => p.id === leaderId);
 
@@ -45,11 +79,15 @@ router.post('/vote', requireAuth, async (req, res) => {
   }
 
   console.log(`[${NODE_ID}] received vote request, forwarding to leader ${leaderId}`);
-  const result = await peerClient.forwardVote(leaderPeer.url, { ...req.body, receivedByNode: NODE_ID }, req.headers.authorization);
+  const result = await peerClient.forwardVote(
+    leaderPeer.url,
+    { ...req.body, receivedByNode: NODE_ID, receivedClock },
+    req.headers.authorization
+  );
   if (!result.ok) {
     return res.status(503).json({ error: 'leader unreachable, try again shortly' });
   }
-  res.status(result.data && result.data.error ? 409 : 200).json(result.data);
+  res.status(result.status).json(result.data);
 });
 
 router.get('/status', (req, res) => {
@@ -78,4 +116,10 @@ router.get('/tally', (req, res) => {
   res.json(tally);
 });
 
+// Returns the node's current logical clock snapshot (no tick).
+router.get('/clock', (req, res) => {
+  res.json(clocks.snapshot());
+});
+
 module.exports = router;
+

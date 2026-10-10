@@ -86,10 +86,21 @@ things make this safe:
    for the voter's ID and rejects if already present (see
    `raftState.hasVoterVoted`).
 
+## Storage & Catch-Up (FA-2)
+
+- **Persistence:** Nodes save their core Raft state (`currentTerm`, `votedFor`, `log`, `commitIndex`) to a local JSON file in `${DATA_DIR}/${NODE_ID}.json`. The file is overwritten synchronously using a temporary file and atomic `fs.renameSync` upon every mutating change (e.g. appending a log entry, voting in an election, advancing commit index).
+- **Log Catch-Up:** A node restarting after failure will automatically catch up. The leader tracks `nextIndex` and `matchIndex` for every follower. If an `AppendEntries` RPC is rejected by a follower, the leader decrements `nextIndex` for that follower and retries in the next heartbeat, stepping backwards through the log until it finds the point of divergence, truncates any conflicts, and forces the follower to replicate the missing entries up to the current tip.
+
+## Advanced Consistency Mechanisms
+
+1. **Election Log Up-to-Date Rule:** A node will reject a `RequestVote` RPC if the candidate's log is less up-to-date than its own (comparing the term of the last entry, and then the length of the log). This guarantees that a node lacking committed entries can never win an election, preserving safety across failovers.
+2. **Causal Clocks:** A Lamport logical clock and Vector clock (`clock/clocks.js`) follow every vote event. The vector keys are node IDs. Clocks tick strictly on vote lifecycle events, not heartbeats.
+3. **Cluster Audit:** An unauthenticated `GET /audit` endpoint pulls the committed log of every reachable node to compare against the highest `commitIndex` node, providing a cluster-wide view of consistency (and proving no node has diverged).
+4. **Mutual Exclusion:** `mutex/ricartAgrawala.js` provides distributed locking for a shared resource (a results file). The implementation uses Lamport clocks to order concurrent requests. Since it relies on timeouts, it treats partitions as crashes and is unsafe under true network partitions.
+
 ## Known, deliberate simplifications (see also root README)
 
-- No persistent storage — in-memory log only.
-- No log catch-up mechanism for a node that missed entries while
-  restarted.
 - Voter/candidate data is static, not distributed via consensus.
 - No real SMS OTP (see root README for reasoning).
+- No log compaction/snapshots.
+- Static cluster membership.

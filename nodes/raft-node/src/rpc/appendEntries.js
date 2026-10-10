@@ -15,94 +15,175 @@ const timers = require('../election/timers');
 const peerClient = require('./peerClient');
 const { emitUpdate } = require('../realtime/socketServer');
 const { NODE_ID, PEERS } = require('../config/peers');
+const clocks = require('../clock/clocks');
 
-// Only the leader calls this. Sends a heartbeat (newEntry = null) or
-// a real new log entry to every follower in parallel.
-async function sendAppendEntriesToAll(newEntry = null) {
+async function sendAppendEntriesToAll() {
   const state = raftState.getState();
   if (state.role !== raftState.ROLES.LEADER) return;
 
-  const payload = {
-    term: state.currentTerm,
-    leaderId: NODE_ID,
-    entry: newEntry,
-    leaderCommitIndex: state.commitIndex,
-  };
+  const currentTerm = state.currentTerm;
+  const nextIndexMap = raftState.getNextIndex();
+  
+  const requests = PEERS.map((peer) => {
+    const peerNextIndex = nextIndexMap[peer.id];
+    const prevLogIndex = peerNextIndex - 1;
+    const prevLogTerm = (prevLogIndex >= 0 && prevLogIndex < state.log.length) 
+                        ? state.log[prevLogIndex].term : 0;
+    const entries = state.log.slice(peerNextIndex);
 
-  const results = await Promise.allSettled(
-    PEERS.map((peer) => peerClient.sendAppendEntries(peer.url, payload))
-  );
+    // Only tick the clock if we're actually sending entries, not for
+    // empty heartbeats.
+    const clock = entries.length > 0 ? clocks.localEvent() : undefined;
 
-  emitUpdate('status', raftState.getStatusSnapshot(NODE_ID));
+    const payload = {
+      term: currentTerm,
+      leaderId: NODE_ID,
+      prevLogIndex,
+      prevLogTerm,
+      entries,
+      leaderCommitIndex: state.commitIndex,
+      clock,
+    };
+    return peerClient.sendAppendEntries(peer.url, payload).then(result => ({ peer, result }));
+  });
 
-  if (!newEntry) return; // plain heartbeat — nothing to commit
+  const results = await Promise.allSettled(requests);
 
-  let acks = 1; // the leader counts as having "replicated" to itself
+  const afterState = raftState.getState();
+  if (afterState.role !== raftState.ROLES.LEADER || afterState.currentTerm !== currentTerm) {
+    return;
+  }
+
+  const matchIndexMap = raftState.getMatchIndex();
+
   for (const settled of results) {
-    if (settled.status === 'fulfilled' && settled.value.ok && settled.value.data.success) {
-      acks += 1;
+    if (settled.status !== 'fulfilled' || !settled.value.result.ok) continue;
+    
+    const { peer, result } = settled.value;
+    const { term, success, matchIndex, conflictIndex } = result.data;
+
+    if (term > afterState.currentTerm) {
+      raftState.becomeFollower(term);
+      timers.stopHeartbeatTimer();
+      timers.resetElectionTimer(require('./requestVote').startElection);
+      emitUpdate('status', raftState.getStatusSnapshot(NODE_ID));
+      return; // Stop processing, we are no longer leader
+    }
+
+    if (success) {
+      matchIndexMap[peer.id] = Math.max(matchIndexMap[peer.id] || -1, matchIndex);
+      nextIndexMap[peer.id] = matchIndexMap[peer.id] + 1;
+      // If they returned a clock (meaning we sent them entries, not
+      // just a heartbeat), merge it back in.
+      if (result.data.clock) {
+        clocks.onReceive(result.data.clock);
+      }
+    } else if (conflictIndex !== undefined) {
+      nextIndexMap[peer.id] = Math.max(0, Math.min(nextIndexMap[peer.id], conflictIndex));
     }
   }
 
   const clusterSize = PEERS.length + 1;
   const majority = Math.floor(clusterSize / 2) + 1;
-  if (acks >= majority) {
-    raftState.updateCommitIndex(newEntry.index);
-    console.log(`[${NODE_ID}] committed entry ${newEntry.index} (${acks}/${clusterSize} acks)`);
+  let newlyCommitted = [];
+
+  for (let N = afterState.commitIndex + 1; N < afterState.log.length; N++) {
+    if (afterState.log[N].term === currentTerm) {
+      let acks = 1;
+      for (const peer of PEERS) {
+        if (matchIndexMap[peer.id] >= N) acks++;
+      }
+      if (acks >= majority) {
+        raftState.updateCommitIndex(N);
+        newlyCommitted.push({ entry: afterState.log[N], acks });
+      }
+    }
+  }
+
+  if (newlyCommitted.length > 0) {
+    for (const { entry, acks } of newlyCommitted) {
+      const commitClock = clocks.localEvent();
+      console.log(`[${NODE_ID}] committed entry ${entry.index} (${acks}/${clusterSize} acks)`);
+      emitUpdate('vote-activity', {
+        voterId: entry.command.voterId,
+        candidateChoice: entry.command.candidateChoice,
+        receivedByNode: entry.command.receivedByNode,
+        handledByNode: NODE_ID,
+        acks,
+        clusterSize,
+        committedAt: Date.now(),
+        receivedClock: entry.command.receivedClock,
+        appendClock: entry.command.appendClock,
+        commitClock,
+        index: entry.index,
+      });
+    }
     emitUpdate('tally', raftState.getTallySnapshot());
-    emitUpdate('vote-activity', {
-      voterId: newEntry.command.voterId,
-      candidateChoice: newEntry.command.candidateChoice,
-      receivedByNode: newEntry.command.receivedByNode,
-      handledByNode: NODE_ID,
-      acks,
-      clusterSize,
-      committedAt: Date.now(),
-    });
     emitUpdate('status', raftState.getStatusSnapshot(NODE_ID));
   }
 }
 
 function startLeaderHeartbeats() {
-  timers.startHeartbeatTimer(() => sendAppendEntriesToAll(null));
+  timers.startHeartbeatTimer(() => sendAppendEntriesToAll());
 }
 
-// Called when the leader accepts a new vote from a client: append it
-// locally first, then try to replicate it to a majority.
-function leaderAppendAndReplicate(command) {
+async function leaderAppendAndReplicate(command) {
   const entry = raftState.appendLogEntry(command);
-  return sendAppendEntriesToAll(entry);
+  await sendAppendEntriesToAll();
+  return { entry, committed: raftState.getState().commitIndex >= entry.index };
 }
 
-// Called by the /rpc/append-entries route when this node receives a
-// heartbeat or log entry from a leader.
-function handleAppendEntries({ term, leaderId, entry, leaderCommitIndex }) {
+function handleAppendEntries({ term, leaderId, prevLogIndex, prevLogTerm, entries, leaderCommitIndex, clock }) {
   const state = raftState.getState();
 
   if (term < state.currentTerm) {
-    // This sender's term is stale — it's not a legitimate leader
-    // (anymore), reject so it steps down when it sees our term back.
     return { term: state.currentTerm, success: false };
   }
 
-  // Any valid AppendEntries — heartbeat or not — proves a leader is
-  // alive right now, so this doubles as our heartbeat signal.
   raftState.becomeFollower(term, leaderId);
-  timers.stopHeartbeatTimer(); // in case we were leader a moment ago
+  timers.stopHeartbeatTimer();
   timers.resetElectionTimer(require('./requestVote').startElection);
 
-  if (entry) {
-    raftState.appendLogEntry(entry.command);
+  if (prevLogIndex >= 0) {
+    if (state.log.length <= prevLogIndex) {
+      return { term: state.currentTerm, success: false, conflictIndex: state.log.length };
+    }
+    if (state.log[prevLogIndex].term !== prevLogTerm) {
+      return { term: state.currentTerm, success: false, conflictIndex: prevLogIndex };
+    }
+  }
+
+  for (const entry of entries) {
+    if (entry.index < state.log.length) {
+      if (state.log[entry.index].term !== entry.term) {
+        raftState.truncateLogFrom(entry.index);
+        raftState.appendReplicatedEntry(entry);
+      }
+    } else {
+      raftState.appendReplicatedEntry(entry);
+    }
   }
 
   emitUpdate('status', raftState.getStatusSnapshot(NODE_ID));
 
   if (leaderCommitIndex > state.commitIndex) {
-    raftState.updateCommitIndex(leaderCommitIndex);
+    raftState.updateCommitIndex(Math.min(leaderCommitIndex, prevLogIndex + entries.length));
     emitUpdate('tally', raftState.getTallySnapshot());
   }
 
-  return { term: raftState.getState().currentTerm, success: true };
+  // If the leader sent a clock, merge it and return our own snapshot
+  // so the leader can merge our clock back into its state.
+  let responseClock;
+  if (clock) {
+    responseClock = clocks.onReceive(clock);
+  }
+
+  return { 
+    term: raftState.getState().currentTerm, 
+    success: true, 
+    matchIndex: prevLogIndex + entries.length,
+    clock: responseClock 
+  };
 }
 
 module.exports = {

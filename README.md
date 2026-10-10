@@ -121,7 +121,31 @@ npm install
 cd ..
 ```
 
-## Running the Project
+## Running with Docker (Recommended)
+
+You can run the entire cluster (5 nodes + dashboard) using Docker Compose.
+
+### Commands
+- **Start cluster:** `npm run docker:up` (or `docker compose up --build`)
+- **Stop cluster:** `npm run docker:down`
+- **Wipe persisted data:** `npm run docker:reset`
+- **View logs:** `npm run docker:logs`
+
+### Ports
+- node1..node5: `5001`..`5005`
+- dashboard: `5173` (http://localhost:5173)
+
+### Simulating Failures
+Stop a single node to observe leader election and failover:
+\`\`\`bash
+docker compose stop node3
+\`\`\`
+Start the node again to see it rejoin and automatically catch up its log:
+\`\`\`bash
+docker compose start node3
+\`\`\`
+
+## Running Locally (Without Docker)
 
 ### Option A: One-command demo
 
@@ -245,10 +269,12 @@ These are deliberate scope decisions, not bugs — each is documented in the arc
 
 | Limitation | Reasoning |
 |---|---|
-| **No persistent storage** — in-memory log only, lost on node restart | Real Raft persists the log to disk; this is a natural extension for FA-2 |
-| **No log catch-up** — a restarted node has an empty log and can't backfill missed entries | Full Raft handles this with log consistency checks; scoped out for FA-1 |
-| **Static voter/candidate registry** — identical on every node at boot, not replicated via consensus | Registering voters through consensus adds complexity without demonstrating new distributed systems concepts |
-| **No real SMS/OTP integration** — JWT + password authentication only | A real SMS gateway adds cost and external dependency risk with no course benefit |
+| **No log compaction/snapshots** | The log grows indefinitely; fine for a demo, but a real Raft implementation would compact the log periodically. |
+| **Static cluster membership** | Nodes are fixed at startup; no dynamic adding or removing of nodes during runtime. |
+| **In-memory voter registry** | Voters are loaded from a static list; no persistent registration process. |
+| **RA assumes crash faults, not partitions** | The Ricart-Agrawala implementation treats timeouts as crash faults. It is unsafe under network partitions. |
+| **Crash-fault tolerance only (no Byzantine faults)** | Raft protects against crash failures, not malicious nodes (Byzantine faults). |
+| **No real SMS/OTP integration** — JWT + password authentication only | A real SMS gateway adds cost and external dependency risk with no course benefit. |
 
 ## Project Documentation
 

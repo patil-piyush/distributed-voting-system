@@ -44,3 +44,12 @@ export async function getTally(nodeUrl) {
   const res = await axios.get(`${nodeUrl}/tally`);
   return res.data;
 }
+
+export const ADMIN_KEY = 'admin-demo-key';
+
+export async function publishResults(nodeUrl) {
+  const res = await axios.post(`${nodeUrl}/admin/publish-results`, {}, {
+    headers: { 'x-admin-key': ADMIN_KEY }
+  });
+  return res.data;
+}

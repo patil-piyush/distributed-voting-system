@@ -14,6 +14,8 @@ const clusterRoutes = require('./routes/clusterRoutes');
 const voteRoutes = require('./routes/voteRoutes');
 const authRoutes = require('./routes/authRoutes');
 const candidateRoutes = require('./routes/candidateRoutes');
+const auditRoutes = require('./routes/auditRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 const { initSocket } = require('./realtime/socketServer');
 
 const app = express();
@@ -22,7 +24,7 @@ app.use(express.json());
 // handle cors
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-admin-key');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   next();
 });
@@ -39,6 +41,9 @@ app.use('/rpc', clusterRoutes);
 app.use('/auth', authRoutes);
 app.use('/', candidateRoutes);
 app.use('/', voteRoutes);
+// Diagnostic — no auth:
+app.use('/audit', auditRoutes);
+app.use('/admin', adminRoutes);
 
 // Socket.io needs a raw http server, not just the Express app, since
 // it upgrades the connection to a websocket.

@@ -181,28 +181,50 @@ inconsistent result if the other 3 come back."*
 
 ---
 
-## 9. Restarting after the partition demo (known limitation)
+## 9. Demo: Cluster Audit
 
-Don't try to bring back just 1-2 nodes and continue testing — a
-restarted node comes back with an **empty log**, and there's no
-catch-up mechanism yet (documented in `docs/architecture.md` as a
-deliberate FA-1 scope decision). For a clean state:
-
-1. Stop every remaining node (Ctrl+C in each terminal).
-2. Restart all 5 together (step 1 again).
-
-If asked about this in evaluation, the honest answer is: *"Full Raft
-handles this with log consistency checks and a catch-up mechanism —
-we scoped that out for FA-1 and documented it explicitly; it's a
-natural FA-2 extension."*
+With the cluster running and votes cast, click the **"Run cluster audit"** button in the dashboard's audit panel.
+- This queries all 5 nodes simultaneously to retrieve their committed logs.
+- It compares the logs up to the highest contiguous commit index.
+- It proves mathematically that despite distributed execution, the replicated state machine model works: every node has the exact same sequence of committed votes in the exact same order.
 
 ---
 
-## 10. Shutting everything down
+## 10. Demo: Causal Clocks & Concurrency
 
-- Ctrl+C in each of the 5 node terminals.
-- Ctrl+C in the dashboard terminal.
-- Nothing persists to disk — next run starts completely fresh.
+1. Run the concurrent load test (`npm run loadtest`).
+2. Open the dashboard and look at the **Vote Activity Feed**. You will see `L:<lamport_ts>` and a compact vector clock `{n1:x, n2:y, ...}` for each vote.
+3. Click two different feed items to select them.
+4. The **Causality Analysis** panel will appear. It compares the two vector clocks and determines if one happened BEFORE the other, AFTER, or if they were CONCURRENT.
+5. Notice that votes fired from the concurrent load test will frequently be evaluated as **CONCURRENT**, demonstrating true distributed concurrency.
+
+---
+
+## 11. Demo: Ricart-Agrawala Mutual Exclusion
+
+1. Scroll down to the **Ricart-Agrawala Mutual Exclusion** panel in the dashboard.
+2. Click the **"Publish results from ALL 5 nodes at once"** button.
+3. The dashboard issues 5 simultaneous POST requests to all 5 nodes.
+4. Watch the timeline: all nodes broadcast a `REQUEST`, but they gracefully queue up using Lamport timestamps as the tie-breaker.
+5. The panel will display "Mutual exclusion held" and show the `ENTER` and `EXIT` events for each node happening completely sequentially, with zero overlap.
+6. Verify the shared file locally: `curl -s http://localhost:5001/admin/mutex-log` will show a strictly alternating BEGIN/END sequence with no interleaved lines.
+
+---
+
+## 12. Demo: Follower catch-up & Persistence
+
+1. Stop node3 (using `docker compose stop node3` or Ctrl+C).
+2. Cast a vote using the dashboard or curl. The cluster continues to work (4 nodes).
+3. Restart node3 (`docker compose start node3`).
+4. Watch node3's log file or status panel. It immediately receives an `AppendEntries` payload from the leader with the missing vote, updates its `nextIndex`, and replicates the missing entry automatically.
+5. **Persistence**: Stop the ENTIRE cluster (`docker compose stop` or Ctrl-C everything). Restart it. The node statuses will instantly load their log lengths and the `Cluster Audit` will still pass, proving all votes survived the complete cluster crash.
+
+---
+
+## 13. Shutting everything down
+
+- Stop the docker containers (`npm run docker:down`) or Ctrl+C in all manual terminals.
+- To wipe the persistent state and start fresh: `npm run docker:reset`.
 
 ---
 
@@ -217,6 +239,10 @@ natural FA-2 extension."*
 | 6 — load test | Concurrency handled correctly across nodes (core problem statement claim) |
 | 7 — failover | Fault tolerance, re-election |
 | 8 — partition | Safety property — no commit without majority |
+| 9 — cluster audit | Global State consistency |
+| 10 — causal clocks | Logical/Vector clocks and concurrent event detection |
+| 11 — mutual exclusion | Distributed locks via Ricart-Agrawala |
+| 12 — persistence | Replicated State Machine durability and catch-up |
 
-If you only have time for a short demo, steps **1, 3, 6, and 7** are
-the four that matter most.
+If you only have time for a short demo, steps **1, 6, 7, 10, and 11** are
+the ones that matter most for FA-2.

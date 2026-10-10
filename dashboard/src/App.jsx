@@ -4,6 +4,8 @@ import { connectAllSockets } from './socket';
 import NodeStatus from './components/NodeStatus.jsx';
 import LiveTally from './components/LiveTally.jsx';
 import VoteActivityFeed from './components/VoteActivityFeed.jsx';
+import AuditPanel from './components/AuditPanel.jsx';
+import MutexPanel from './components/MutexPanel.jsx';
 
 export default function App() {
   const [voterId, setVoterId] = useState('');
@@ -21,6 +23,7 @@ export default function App() {
       return stored ? JSON.parse(stored) : [];
     } catch { return []; }
   });
+  const [mutexEvents, setMutexEvents] = useState([]);
 
   useEffect(() => {
     getCandidates().then(setCandidates).catch(() => {});
@@ -49,6 +52,8 @@ export default function App() {
           localStorage.setItem('voteActivity', JSON.stringify(updated));
           return updated;
         }),
+      onMutex: (data) =>
+        setMutexEvents((prev) => [data, ...prev].slice(0, 100)), // keep last 100
     });
 
     return disconnect;
@@ -117,6 +122,14 @@ export default function App() {
       <section className="panel activity-panel">
         <h2>Vote Activity Feed</h2>
         <VoteActivityFeed activity={voteActivity} />
+      </section>
+
+      <section className="panel audit-panel">
+        <AuditPanel />
+      </section>
+
+      <section className="panel mutex-container">
+        <MutexPanel events={mutexEvents} />
       </section>
 
       <section className="panel voter-panel">
