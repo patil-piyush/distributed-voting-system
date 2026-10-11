@@ -16,11 +16,13 @@ const peerClient = require('./peerClient');
 const { emitUpdate } = require('../realtime/socketServer');
 const { NODE_ID, PEERS } = require('../config/peers');
 const clocks = require('../clock/clocks');
+const metrics = require('../telemetry/metrics');
 
 async function sendAppendEntriesToAll() {
   const state = raftState.getState();
   if (state.role !== raftState.ROLES.LEADER) return;
 
+  metrics.inc('appendSent');
   const currentTerm = state.currentTerm;
   const nextIndexMap = raftState.getNextIndex();
   
@@ -56,14 +58,21 @@ async function sendAppendEntriesToAll() {
 
   const matchIndexMap = raftState.getMatchIndex();
 
-  for (const settled of results) {
-    if (settled.status !== 'fulfilled' || !settled.value.result.ok) continue;
+  for (let i = 0; i < results.length; i++) {
+    const settled = results[i];
+    const peer = PEERS[i];
+    if (settled.status !== 'fulfilled' || !settled.value.result.ok) {
+      metrics.inc('appendFailed');
+      metrics.event('append-failed', { peerId: peer.id });
+      continue;
+    }
     
-    const { peer, result } = settled.value;
+    const { result } = settled.value;
     const { term, success, matchIndex, conflictIndex } = result.data;
 
     if (term > afterState.currentTerm) {
       raftState.becomeFollower(term);
+      metrics.setLeaderSinceTerm(null); metrics.event('stepped-down', { toTerm: term });
       timers.stopHeartbeatTimer();
       timers.resetElectionTimer(require('./requestVote').startElection);
       emitUpdate('status', raftState.getStatusSnapshot(NODE_ID));
@@ -101,6 +110,7 @@ async function sendAppendEntriesToAll() {
   }
 
   if (newlyCommitted.length > 0) {
+    metrics.event('commit-advanced', { commitIndex: raftState.getState().commitIndex });
     for (const { entry, acks } of newlyCommitted) {
       if (entry.command.type === 'noop') continue;
       const commitClock = clocks.localEvent();
@@ -142,6 +152,14 @@ function handleAppendEntries({ term, leaderId, prevLogIndex, prevLogTerm, entrie
   }
 
   raftState.becomeFollower(term, leaderId);
+  metrics.trackHeartbeat();
+  if (entries.length === 0) {
+    metrics.inc('heartbeatsReceived');
+  } else {
+    metrics.inc('appendReceived');
+    metrics.event('append-received', { count: entries.length, leaderId });
+  }
+
   timers.stopHeartbeatTimer();
   timers.resetElectionTimer(require('./requestVote').startElection);
 
@@ -154,9 +172,11 @@ function handleAppendEntries({ term, leaderId, prevLogIndex, prevLogTerm, entrie
     }
   }
 
+  let truncated = false;
   for (const entry of entries) {
     if (entry.index < state.log.length) {
       if (state.log[entry.index].term !== entry.term) {
+        truncated = true;
         raftState.truncateLogFrom(entry.index);
         raftState.appendReplicatedEntry(entry);
       }
@@ -165,10 +185,15 @@ function handleAppendEntries({ term, leaderId, prevLogIndex, prevLogTerm, entrie
     }
   }
 
+  if (entries.length >= 2 || truncated) {
+    metrics.event('catch-up', { count: entries.length, leaderId, truncated });
+  }
+
   emitUpdate('status', raftState.getStatusSnapshot(NODE_ID));
 
   if (leaderCommitIndex > state.commitIndex) {
     raftState.updateCommitIndex(Math.min(leaderCommitIndex, prevLogIndex + entries.length));
+    metrics.event('commit-advanced', { commitIndex: raftState.getState().commitIndex });
     emitUpdate('tally', raftState.getTallySnapshot());
   }
 

@@ -140,4 +140,5 @@ module.exports = {
   releaseCS,
   handleReceiveRequest,
   handleReceiveReply,
+  getMutexState: () => state,
 };

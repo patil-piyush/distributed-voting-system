@@ -10,6 +10,7 @@ const timers = require('../election/timers');
 const peerClient = require('./peerClient');
 const { emitUpdate } = require('../realtime/socketServer');
 const { NODE_ID, PEERS } = require('../config/peers');
+const metrics = require('../telemetry/metrics');
 
 // Called when the election timer fires: we haven't heard from a
 // leader recently, so we try to become one ourselves.
@@ -18,6 +19,7 @@ async function startElection() {
   const state = raftState.getState();
   const electionTerm = state.currentTerm; // remember which term THIS election is for
   console.log(`[${NODE_ID}] election timeout — starting election for term ${electionTerm}`);
+  metrics.inc('electionsStarted'); metrics.event('electionStarted', { term: electionTerm });
   emitUpdate('status', raftState.getStatusSnapshot(NODE_ID));
 
   // Reset our own timer too — if this election doesn't resolve
@@ -60,6 +62,7 @@ async function startElection() {
       // Someone out there is on a later term than us — we lost this
       // race, step down immediately.
       raftState.becomeFollower(term);
+      metrics.setLeaderSinceTerm(null); metrics.event('stepped-down', { toTerm: term });
       emitUpdate('status', raftState.getStatusSnapshot(NODE_ID));
       timers.resetElectionTimer(startElection);
       return;
@@ -80,6 +83,7 @@ async function startElection() {
     raftState.initLeaderState(PEERS.map(p => p.id));
     raftState.appendLogEntry({ type: 'noop' });
     console.log(`[${NODE_ID}] won election for term ${raftState.getState().currentTerm} — becoming leader`);
+    metrics.inc('electionsWon'); metrics.setLeaderSinceTerm(raftState.getState().currentTerm); metrics.event('leader-elected', { term: raftState.getState().currentTerm });
     emitUpdate('status', raftState.getStatusSnapshot(NODE_ID));
     timers.stopElectionTimer();
     // appendEntries.js owns starting the heartbeat timer. Required
@@ -96,16 +100,20 @@ function handleRequestVote({ term, candidateId, lastLogIndex, lastLogTerm }) {
 
   if (term > state.currentTerm) {
     raftState.becomeFollower(term);
+    metrics.setLeaderSinceTerm(null); metrics.event('stepped-down', { toTerm: term });
   }
 
   const granted = raftState.canGrantVote(term, candidateId, lastLogIndex, lastLogTerm);
 
   if (granted) {
     raftState.recordVote(candidateId);
+    metrics.inc('votesGranted'); metrics.event('vote-granted', { candidateId, term });
     // Granting a vote means we trust someone else is handling this
     // election right now — reset our own timer so we don't also
     // start a competing one.
     timers.resetElectionTimer(startElection);
+  } else {
+    metrics.inc('votesDenied'); metrics.event('vote-denied', { candidateId, term });
   }
 
   return { term: raftState.getState().currentTerm, voteGranted: granted };

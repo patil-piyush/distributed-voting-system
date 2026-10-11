@@ -45,6 +45,11 @@ export async function getTally(nodeUrl) {
   return res.data;
 }
 
+export async function getDebugState(nodeUrl) {
+  const res = await axios.get(`${nodeUrl}/debug/state`, { timeout: 1000 });
+  return res.data;
+}
+
 export const ADMIN_KEY = 'admin-demo-key';
 
 export async function publishResults(nodeUrl) {

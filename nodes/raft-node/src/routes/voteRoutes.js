@@ -13,6 +13,7 @@ const { requireAuth } = require('../auth/authMiddleware');
 const { CANDIDATES } = require('../data/candidates');
 const { NODE_ID, PEERS } = require('../config/peers');
 const clocks = require('../clock/clocks');
+const metrics = require('../telemetry/metrics');
 
 // Set of configured peer ids, used to validate the x-forwarded-by-node
 // header so a voter can't spoof receivedByNode or receivedClock.
@@ -32,6 +33,7 @@ router.post('/vote', requireAuth, async (req, res) => {
 
   if (state.role === raftState.ROLES.LEADER) {
     if (raftState.hasVoterVoted(voterId)) {
+      metrics.inc('votes409'); metrics.event('vote-409', { voterId });
       return res.status(409).json({ error: 'this voter has already voted' });
     }
 
@@ -57,8 +59,10 @@ router.post('/vote', requireAuth, async (req, res) => {
       voterId, candidateChoice, receivedByNode, receivedClock, appendClock,
     });
     if (replResult.committed) {
+      metrics.inc('votes200'); metrics.event('vote-200', { voterId, choice: candidateChoice });
       return res.status(200).json({ status: 'committed', handledBy: NODE_ID });
     } else {
+      metrics.inc('votes202'); metrics.event('vote-202', { voterId, choice: candidateChoice });
       return res.status(202).json({ 
         status: 'pending', 
         handledBy: NODE_ID, 
@@ -79,6 +83,7 @@ router.post('/vote', requireAuth, async (req, res) => {
   }
 
   console.log(`[${NODE_ID}] received vote request, forwarding to leader ${leaderId}`);
+  metrics.inc('forwardedVotes'); metrics.event('vote-forwarded', { leaderId });
   const result = await peerClient.forwardVote(
     leaderPeer.url,
     { ...req.body, receivedByNode: NODE_ID, receivedClock },
@@ -87,6 +92,9 @@ router.post('/vote', requireAuth, async (req, res) => {
   if (!result.ok) {
     return res.status(503).json({ error: 'leader unreachable, try again shortly' });
   }
+  if (result.status === 200) { metrics.inc('votes200'); }
+  else if (result.status === 202) { metrics.inc('votes202'); }
+  else if (result.status === 409) { metrics.inc('votes409'); }
   res.status(result.status).json(result.data);
 });
 

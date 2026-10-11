@@ -11,16 +11,26 @@ const { NODE_ID, PORT, PEERS } = require('../config/peers');
 
 const router = express.Router();
 
+function extractCommitted(state) {
+  const committed = [];
+  const limit = Math.min(state.commitIndex, state.log.length - 1);
+  for (let i = 0; i <= limit; i++) {
+    const e = state.log[i];
+    committed.push([
+      e.index,
+      e.term,
+      e.command?.voterId ?? null,
+      e.command?.candidateChoice ?? null,
+    ]);
+  }
+  return committed;
+}
+
 // GET /audit/local — returns this node's committed entries in a
 // compact tuple format for comparison by the cluster-wide audit.
 router.get('/local', (req, res) => {
   const state = raftState.getState();
-  const committed = [];
-  for (let i = 0; i <= state.commitIndex && i < state.log.length; i++) {
-    const e = state.log[i];
-    if (e.command.type === 'noop') continue;
-    committed.push([e.index, e.term, e.command.voterId, e.command.candidateChoice]);
-  }
+  const committed = extractCommitted(state);
   res.json({
     nodeId: NODE_ID,
     role: state.role,
@@ -39,12 +49,7 @@ router.get('/', async (req, res) => {
 
   // Collect local state first (always reachable).
   const state = raftState.getState();
-  const localCommitted = [];
-  for (let i = 0; i <= state.commitIndex && i < state.log.length; i++) {
-    const e = state.log[i];
-    if (e.command.type === 'noop') continue;
-    localCommitted.push([e.index, e.term, e.command.voterId, e.command.candidateChoice]);
-  }
+  const localCommitted = extractCommitted(state);
 
   const selfSnapshot = {
     nodeId: NODE_ID,
@@ -107,10 +112,11 @@ router.get('/', async (req, res) => {
   }
 
   // The comparison window is 0..minCommit across all reachable nodes.
-  const minCommit = Math.min(...reachable.map((s) => s.commitIndex));
+  // We compare up to the lowest commitIndex of any reachable node.
+  const minCommit = Math.min(...reachable.map((s) => s.commitIndex ?? -1));
 
   // Use the node with the highest commitIndex as the reference.
-  const reference = reachable.reduce((a, b) => (a.commitIndex >= b.commitIndex ? a : b));
+  const reference = reachable.reduce((a, b) => ((a.commitIndex ?? -1) >= (b.commitIndex ?? -1) ? a : b));
 
   let consistent = true;
   const nodeResults = snapshots.map((snap) => {
@@ -121,22 +127,24 @@ router.get('/', async (req, res) => {
       return { ...info, inSync: false, firstDivergenceIndex: null };
     }
 
-    // Compare this node's committed entries against the reference
-    // up to minCommit.
+    // If minCommit < 0, no entries have been committed yet by all reachable nodes;
+    // thus they agree vacuously.
     let divergeIdx = null;
-    for (let i = 0; i <= minCommit; i++) {
-      const refEntry = reference.committed[i];
-      const nodeEntry = committed[i];
-      if (
-        !nodeEntry ||
-        !refEntry ||
-        nodeEntry[0] !== refEntry[0] ||
-        nodeEntry[1] !== refEntry[1] ||
-        nodeEntry[2] !== refEntry[2] ||
-        nodeEntry[3] !== refEntry[3]
-      ) {
-        divergeIdx = i;
-        break;
+    if (minCommit >= 0) {
+      for (let i = 0; i <= minCommit; i++) {
+        const refEntry = reference.committed ? reference.committed[i] : null;
+        const nodeEntry = committed ? committed[i] : null;
+        if (
+          !nodeEntry ||
+          !refEntry ||
+          nodeEntry[0] !== refEntry[0] ||
+          nodeEntry[1] !== refEntry[1] ||
+          nodeEntry[2] !== refEntry[2] ||
+          nodeEntry[3] !== refEntry[3]
+        ) {
+          divergeIdx = i;
+          break;
+        }
       }
     }
 

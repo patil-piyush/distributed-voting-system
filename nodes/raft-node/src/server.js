@@ -16,7 +16,9 @@ const authRoutes = require('./routes/authRoutes');
 const candidateRoutes = require('./routes/candidateRoutes');
 const auditRoutes = require('./routes/auditRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const debugRoutes = require('./routes/debugRoutes');
 const { initSocket } = require('./realtime/socketServer');
+const metrics = require('./telemetry/metrics');
 
 const app = express();
 app.use(express.json());
@@ -33,8 +35,6 @@ app.use((req, res, next) => {
 // - Internal (node-to-node) routes under /rpc
 // - Public (voter-facing) routes under /auth and /
 
-
-
 // Internal, node-to-node only:
 app.use('/rpc', clusterRoutes);
 // Public / voter-facing:
@@ -44,6 +44,7 @@ app.use('/', voteRoutes);
 // Diagnostic — no auth:
 app.use('/audit', auditRoutes);
 app.use('/admin', adminRoutes);
+app.use('/debug', debugRoutes);
 
 // Socket.io needs a raw http server, not just the Express app, since
 // it upgrades the connection to a websocket.
@@ -52,5 +53,6 @@ initSocket(httpServer);
 
 httpServer.listen(PORT, () => {
   console.log(`[${NODE_ID}] started as ${raftState.getState().role} on port ${PORT}`);
+  metrics.event('node-started', { port: PORT });
   timers.resetElectionTimer(requestVote.startElection);
 });
